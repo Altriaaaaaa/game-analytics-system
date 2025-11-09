@@ -1,0 +1,2 @@
+set USE_HDFS=false&& set USE_MONGODB=false&& set USE_MAPREDUCE=true&& node server-bigdata.js
+npm run dev
