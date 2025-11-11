@@ -2,7 +2,16 @@
  * 大数据架构版服务器
  * 集成 HDFS + MapReduce + MongoDB
  */
-
+//require('dotenv').config();
+// 添加调试信息
+process.env.USE_HDFS = "true";
+process.env.USE_MONGODB = "true";
+process.env.HDFS_HOST = "192.168.88.128";
+console.log('=== 环境变量验证 ===');
+console.log('USE_HDFS:', process.env.USE_HDFS);
+console.log('USE_MONGODB:', process.env.USE_MONGODB);
+console.log('HDFS_HOST:', process.env.HDFS_HOST);
+console.log('===================');
 const express = require('express')
 const cors = require('cors')
 const fs = require('fs')
@@ -18,6 +27,9 @@ app.use(cors())
 app.use(express.json())
 // 导入市场洞察模块
 const MarketInsights = require('./market-insights')
+// 导入用户认证模块
+const UserAuth = require('./user-auth')
+const userAuth = new UserAuth()
 // 配置
 const PORT = process.env.PORT || 3000
 const USE_HDFS = process.env.USE_HDFS === 'true'
@@ -389,6 +401,112 @@ app.get('/pricing-analysis', (req, res) => {
     res.status(500).json({ error: '价格分析失败' })
   }
 })
+// 用户认证路由
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { username, email, password } = req.body
+    const result = userAuth.register(username, email, password)
+    
+    if (result.success) {
+      res.json(result)
+    } else {
+      res.status(400).json(result)
+    }
+  } catch (error) {
+    res.status(500).json({ error: '注册失败' })
+  }
+})
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body
+    const result = userAuth.login(email, password)
+    
+    if (result.success) {
+      res.json(result)
+    } else {
+      res.status(401).json(result)
+    }
+  } catch (error) {
+    res.status(500).json({ error: '登录失败' })
+  }
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const result = userAuth.logout(token)
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: '登出失败' })
+  }
+})
+
+app.get('/api/auth/verify', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const result = userAuth.verifyToken(token)
+    res.json(result)
+  } catch (error) {
+    res.status(401).json({ valid: false, error: '令牌验证失败' })
+  }
+})
+
+// 用户个人资料路由
+app.get('/api/user/profile', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const verification = userAuth.verifyToken(token)
+    
+    if (!verification.valid) {
+      return res.status(401).json({ error: '未授权' })
+    }
+    
+    const userInfo = userAuth.getUserInfo(verification.user.email)
+    res.json(userInfo)
+  } catch (error) {
+    res.status(500).json({ error: '获取用户信息失败' })
+  }
+})
+
+app.put('/api/user/preferences', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const verification = userAuth.verifyToken(token)
+    
+    if (!verification.valid) {
+      return res.status(401).json({ error: '未授权' })
+    }
+    
+    const result = userAuth.updatePreferences(verification.user.email, req.body.preferences)
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: '更新偏好失败' })
+  }
+})
+
+app.post('/api/user/view-game', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '')
+    const verification = userAuth.verifyToken(token)
+    
+    if (!verification.valid) {
+      return res.status(401).json({ error: '未授权' })
+    }
+    
+    const { gameName } = req.body
+    const gameData = gamesData.find(g => g.Name === gameName)
+    
+    if (gameData) {
+      userAuth.addToViewHistory(verification.user.email, gameData)
+    }
+    
+    res.json({ success: true, message: '浏览记录已保存' })
+  } catch (error) {
+    res.status(500).json({ error: '记录浏览失败' })
+  }
+})
+
 // 简单推荐接口 - 基于平台和类型筛选
 app.get('/simple-recommendations', (req, res) => {
   try {
